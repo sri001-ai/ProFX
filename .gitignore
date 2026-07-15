@@ -1,0 +1,60 @@
+# Python
+*__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual Environment
+venv_pro/
+.venv/
+env/
+
+# Environment variables
+.env
+
+# VSCode
+.vscode/
+.claude/
+.langgraph_api/
+.streamlit/
+.quadrant_storage
+*.json
+# macOS
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Chroma DB
+chroma_db/
+
+# Local databases
+*.db
+*.sqlite
+
+# Data folders
+data/
+datasets/
+downloads/
+collections/
+# Output folders
+output/
+outputs/
+
+# Models
+models/
+
+# Temporary files
+tmp/
+temp/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# PDF files (optional)
+*.pdf
+
+# Images (optional)
+*.png
+*.jpg
+*.jpeg

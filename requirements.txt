@@ -1,0 +1,33 @@
+# --- Phase 1: scraping / ingestion (built and tested in this pass) ---
+playwright>=1.45.0
+beautifulsoup4>=4.12.0
+lxml>=5.2.0
+httpx>=0.27.0
+PyMuPDF>=1.24.0        # imported as `fitz` — PDF text extraction
+pytesseract>=0.3.10    # OCR fallback for scanned PDFs (needs `tesseract` system binary)
+pdf2image>=1.17.0      # available if you want an alternate rasterization path
+Pillow>=10.3.0
+tenacity>=8.3.0
+tqdm>=4.66.0
+loguru>=0.7.2
+python-dotenv>=1.0.1
+
+# --- Phase 2: ingestion into vector DB ---
+qdrant-client>=1.9.0
+
+# --- Phase 3: LangGraph multi-agent RAG bot on Ollama ---
+langgraph>=1.0.0
+langgraph-checkpoint-sqlite>=2.0.0
+langchain-core>=0.3.0
+langchain-ollama>=0.2.0
+ollama>=0.2.1
+langsmith>=0.10.0
+
+# --- Reranker (cross-encoder) ---
+sentence-transformers>=3.0.0
+
+# --- Chat UI ---
+streamlit>=1.38.0
+
+# --- LangGraph Studio (local graph visualizer/debugger) ---
+langgraph-cli[inmem]>=0.1.0
