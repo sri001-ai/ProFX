@@ -9,6 +9,7 @@ LangGraph checkpointer, keyed by that session_id as the thread_id — this UI
 is a thin view over it, not a second source of truth.
 """
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -20,17 +21,12 @@ import config  # noqa: F401 -- importing triggers load_dotenv() + LangSmith env 
 from agents import session_store
 from agents.graph import build_graph, get_checkpointer, make_thread_config
 
-st.set_page_config(page_title="PRO FX Assistant", page_icon="🔊", layout="centered")
+LOGO_PATH = Path(__file__).resolve().parent.parent / "logo.png"
+FAVICON_PATH = Path(__file__).resolve().parent.parent / "PROFXfavicon.png"
 
-STATUS_LABELS = {
-    "input_guard": "Checking your message...",
-    "router": "Understanding your request...",
-    "retrieval": "Searching the catalog...",
-    "lead_capture": "Noting your details...",
-    "escalation": "Connecting you to our team...",
-    "answer_composer": "Composing an answer...",
-    "output_guard": "Finalizing...",
-}
+st.set_page_config(page_title="PRO FX Assistant", page_icon=str(FAVICON_PATH), layout="centered")
+
+DISCLAIMER = "PRO FX Assistant can make mistakes. Please verify important details with our team."
 
 
 @st.cache_resource
@@ -42,10 +38,22 @@ def _get_graph():
 graph, checkpointer = _get_graph()
 
 
+def _format_timestamp(raw: str | None) -> str:
+    if not raw:
+        return ""
+    try:
+        return datetime.fromisoformat(raw).strftime("%I:%M %p").lstrip("0")
+    except ValueError:
+        return ""
+
+
 def _render_message(msg):
     role = "user" if isinstance(msg, HumanMessage) else "assistant"
     with st.chat_message(role):
         st.markdown(msg.content)
+        timestamp = _format_timestamp(msg.additional_kwargs.get("timestamp"))
+        if timestamp:
+            st.caption(timestamp)
 
 
 def _switch_session(session_id: str):
@@ -54,8 +62,8 @@ def _switch_session(session_id: str):
 
 # ---- Sidebar: session list ----
 with st.sidebar:
-    st.markdown("### PRO FX Assistant")
-    if st.button("+ New chat", use_container_width=True):
+    st.image(str(LOGO_PATH), width="stretch")
+    if st.button("+ New chat", width="stretch"):
         new_id = session_store.create_session()
         _switch_session(new_id)
         st.rerun()
@@ -65,7 +73,7 @@ with st.sidebar:
         col1, col2 = st.columns([5, 1])
         active = st.session_state.get("session_id") == s["id"]
         with col1:
-            if st.button(("• " if active else "") + s["title"], key=f"switch-{s['id']}", use_container_width=True):
+            if st.button(("• " if active else "") + s["title"], key=f"switch-{s['id']}", width="stretch"):
                 _switch_session(s["id"])
                 st.rerun()
         with col2:
@@ -83,7 +91,7 @@ if "session_id" not in st.session_state:
 session_id = st.session_state.session_id
 thread_config = make_thread_config(session_id)
 
-st.title("🔊 PRO FX Assistant")
+st.image(str(LOGO_PATH), width=280)
 st.caption("Ask about products, brands, installation, pricing, or request a demo.")
 
 # A toast set just before st.rerun() would otherwise be wiped out before the
@@ -113,15 +121,15 @@ if user_text:
 
     with st.chat_message("assistant"):
         placeholder = st.empty()
-        final_update = {}
-        for update in graph.stream(
-            {"user_input": user_text, "session_id": session_id},
-            config=thread_config,
-            stream_mode="updates",
-        ):
-            node_name = next(iter(update))
-            placeholder.markdown(f"_{STATUS_LABELS.get(node_name, 'Thinking...')}_")
-            final_update = update[node_name]
+        with st.spinner("Processing..."):
+            final_update = {}
+            for update in graph.stream(
+                {"user_input": user_text, "session_id": session_id},
+                config=thread_config,
+                stream_mode="updates",
+            ):
+                node_name = next(iter(update))
+                final_update = update[node_name]
         answer = final_update.get("answer", "") or "Sorry, something went wrong generating a response."
         placeholder.markdown(answer)
 
@@ -132,3 +140,5 @@ if user_text:
         st.session_state["pending_toast"] = ("Personal information was redacted before processing.", "🔒")
 
     st.rerun()
+
+st.caption(DISCLAIMER)

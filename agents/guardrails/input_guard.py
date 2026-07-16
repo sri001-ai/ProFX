@@ -1,5 +1,7 @@
 """Input guardrail node: blocks jailbreak attempts, redacts PII before it
 ever reaches retrieval, the LLM prompt, or the persisted chat history."""
+from datetime import datetime
+
 from langchain_core.messages import HumanMessage
 
 import config
@@ -15,6 +17,7 @@ def make_input_guard_node(llm):
     def node(state):
         user_input = state["user_input"]
         result = {"guard_blocked": False, "guard_reason": None, "pii_redacted": False}
+        timestamp = datetime.now().isoformat()
 
         if config.ENABLE_INPUT_GUARDRAILS:
             verdict = jailbreak.classify(user_input, llm)
@@ -22,7 +25,7 @@ def make_input_guard_node(llm):
                 result["guard_blocked"] = True
                 result["guard_reason"] = f"jailbreak: {verdict['reason']}"
                 result["answer"] = REFUSAL_MESSAGE
-                result["messages"] = [HumanMessage(content=user_input)]
+                result["messages"] = [HumanMessage(content=user_input, additional_kwargs={"timestamp": timestamp})]
                 return result
 
             # Mid-flow lead capture explicitly asks the user for their
@@ -39,7 +42,7 @@ def make_input_guard_node(llm):
                 user_input = redacted
 
         result["user_input"] = user_input
-        result["messages"] = [HumanMessage(content=user_input)]
+        result["messages"] = [HumanMessage(content=user_input, additional_kwargs={"timestamp": timestamp})]
         return result
 
     return node

@@ -72,6 +72,9 @@ temp/
 *.png
 *.jpg
 *.jpeg
+# ...except the app's own branding, which needs to ship with the app.
+!logo.png
+!PROFXfavicon.png
 
 # Qdrant vector DB data — deliberately tracked so the server can be deployed
 # from a git clone/pull without re-running the scraper/ingestion pipeline.
