@@ -6,8 +6,8 @@ import config
 from agents.guardrails import jailbreak, pii
 
 REFUSAL_MESSAGE = (
-    "I can't help with that request. Let's get back to your PRO FX questions — "
-    "products, pricing, installation, or booking a demo."
+    "I'm not able to help with that one, but I'd genuinely love to help with anything "
+    "PRO FX-related — products, pricing, installation, or booking a demo!"
 )
 
 

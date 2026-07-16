@@ -1,0 +1,94 @@
+# Deploys the PRO FX assistant with its already-populated Qdrant vector DB
+# (see qdrant_storage/, tracked in git for exactly this purpose — no
+# scraping or re-ingestion needed). Bring the whole stack up with:
+#
+#     docker compose up -d
+#
+# First boot pulls the nomic-embed-text embedding model into the ollama
+# volume (one-time, a few hundred MB) before the app starts — subsequent
+# restarts skip that since the model persists in the ollama_models volume.
+#
+# Requires a .env file in this directory with GOOGLE_API_KEY,
+# ANTHROPIC_API_KEY, OPENAI_API_KEY (chat LLM + fallbacks) and, optionally,
+# LANGSMITH_TRACING/LANGSMITH_API_KEY/LANGSMITH_PROJECT — see .env.example.
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: profx-qdrant
+    ports:
+      # Bound to localhost only — Qdrant has no built-in auth, so this
+      # must never be reachable from the public internet. The app reaches
+      # it over the internal compose network regardless of this binding;
+      # this is solely for your own debugging via SSH (e.g. an SSH tunnel
+      # or curl from on the box itself).
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: profx-ollama
+    ports:
+      # Same reasoning as qdrant above — localhost only, not public.
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/11434' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # One-shot: pulls the embedding model into the shared ollama_models volume,
+  # then exits. The app waits on this completing successfully before its
+  # first start; a redeploy with the model already pulled skips the work
+  # (ollama pull is a no-op if the model's already present).
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: profx-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["ollama", "pull", "nomic-embed-text"]
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+    restart: "no"
+
+  app:
+    build: .
+    container_name: profx-app
+    ports:
+      - "8501:8501"
+    volumes:
+      # Persists chat history (chat_state.sqlite3), captured leads
+      # (leads.jsonl), and logs across container restarts/redeploys — this
+      # directory is deliberately NOT in git (see .gitignore), only this
+      # volume mount keeps it alive on the server.
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      # Always the in-network service names here, regardless of whatever
+      # QDRANT_URL/OLLAMA_BASE_URL might be set to in .env for local dev.
+      QDRANT_URL: "http://qdrant:6333"
+      OLLAMA_BASE_URL: "http://ollama:11434"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  ollama_models:

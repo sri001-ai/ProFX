@@ -1,0 +1,10 @@
+[server]
+# This is a locally-run single-user app, not live-reload development on a
+# framework with hot-swappable pages — the file watcher's module-tree walk
+# has no payoff here and just wastes CPU (and spams noisy, harmless
+# ModuleNotFoundError tracebacks from transformers' optional torchvision
+# submodules, pulled in transitively by the sentence-transformers reranker).
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false

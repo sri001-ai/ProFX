@@ -15,9 +15,14 @@ env/
 .vscode/
 .claude/
 .langgraph_api/
-.streamlit/
-.quadrant_storage
+# NOTE: ".streamlit/*" (not ".streamlit/") so the negation below can still
+# apply — a trailing-slash directory rule stops git from descending into it
+# at all, which silently defeats any "!" exception for files inside it.
+.streamlit/*
+!.streamlit/config.toml
+
 *.json
+!langgraph.json
 # macOS
 .DS_Store
 
@@ -33,10 +38,19 @@ chroma_db/
 *.sqlite
 
 # Data folders
+# NOTE: chat history (data/chat_state.sqlite3), captured leads
+# (data/leads.jsonl), and logs are intentionally NOT tracked here even
+# though they need to persist in production — that's handled by mounting
+# data/ as a persistent volume in docker-compose.yml instead. Committing a
+# live, constantly-changing sqlite file to git would bloat history and
+# risks clobbering server data on a future `git pull`.
 data/
 datasets/
 downloads/
-collections/
+# ("collections/" removed — it's a leftover generic-template rule that was
+# accidentally matching Qdrant's own qdrant_storage/collections/ directory,
+# excluding the entire vector DB from git. No other directory in this repo
+# is actually named "collections".)
 # Output folders
 output/
 outputs/
@@ -58,3 +72,12 @@ temp/
 *.png
 *.jpg
 *.jpeg
+
+# Qdrant vector DB data — deliberately tracked so the server can be deployed
+# from a git clone/pull without re-running the scraper/ingestion pipeline.
+# ~190MB across 123 files as of the last ingestion run, comfortably under
+# GitHub's 100MB-per-file limit (a Qdrant *snapshot* of the same collection
+# came out to ~500MB in a single file — too large for a plain git push, so
+# the raw storage directory is the better fit here). Re-run `python
+# run_ingest.py` and re-commit this directory if the catalog changes.
+!qdrant_storage/**/*.json

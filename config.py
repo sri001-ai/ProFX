@@ -51,21 +51,38 @@ OCR_DPI = 300
 # ---- Phase 2 (ingestion) settings ----
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION = "profx_knowledge_base"
+# Embeddings stay local/free via Ollama — only chat completions (below) moved
+# to paid cloud providers.
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-OLLAMA_LLM_MODEL = os.getenv("OLLAMA_LLM_MODEL", "qwen3:8b")
 
 CHUNK_SIZE_CHARS = int(os.getenv("PROFX_CHUNK_SIZE", 1500))
 CHUNK_OVERLAP_CHARS = int(os.getenv("PROFX_CHUNK_OVERLAP", 200))
+
+# ---- Chat LLM: Gemini primary, Claude then OpenAI as automatic fallbacks ----
+# API keys (GOOGLE_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY) are read
+# directly from the environment by each provider's SDK — not surfaced as
+# config constants here, same reasoning as LANGSMITH_API_KEY below.
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 # ---- Phase 3 (agentic RAG) settings ----
 RETRIEVAL_TOP_K = int(os.getenv("PROFX_RETRIEVAL_TOP_K", 20))
 RERANK_TOP_K = int(os.getenv("PROFX_RERANK_TOP_K", 5))
 ENABLE_RERANKER = os.getenv("PROFX_ENABLE_RERANKER", "true").lower() != "false"
 RERANKER_MODEL = os.getenv("PROFX_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+# Measured on this corpus: genuinely relevant matches score +2.7 to +3.7+,
+# unrelated/noise queries score -5 to -11 — 0.0 cleanly separates the two.
+RERANK_MIN_SCORE = float(os.getenv("PROFX_RERANK_MIN_SCORE", 0.0))
 
 ENABLE_INPUT_GUARDRAILS = os.getenv("PROFX_ENABLE_INPUT_GUARDRAILS", "true").lower() != "false"
 ENABLE_OUTPUT_GUARDRAILS = os.getenv("PROFX_ENABLE_OUTPUT_GUARDRAILS", "true").lower() != "false"
+
+# How many prior turns (1 turn = 1 customer message + 1 reply) the router and
+# answer composer see. Too short and the bot "forgets" what product it was
+# just discussing a few messages back — this is shared so both stay in sync.
+CONVERSATION_HISTORY_TURNS = int(os.getenv("PROFX_HISTORY_TURNS", 8))
 
 CHAT_STATE_DB = DATA_DIR / "chat_state.sqlite3"
 

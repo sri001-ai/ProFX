@@ -1,0 +1,21 @@
+venv_pro/
+.venv/
+env/
+__pycache__/
+*.pyc
+
+.git/
+.claude/
+.langgraph_api/
+
+# Qdrant's data is mounted as a volume at runtime (see docker-compose.yml),
+# not baked into the image — no need to copy 190MB+ into the build context.
+qdrant_storage/
+
+# data/ is mounted as a volume too; anything already there locally (scraped
+# corpus, chat history, logs) shouldn't end up baked into the image either.
+data/
+
+*.log
+.DS_Store
+.env

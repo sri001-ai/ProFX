@@ -15,6 +15,8 @@ class GraphState(TypedDict, total=False):
     pii_redacted: bool
 
     intent: Optional[str]
+    standalone_query: Optional[str]
+    lead_capture_decision: Optional[str]
     retrieved_docs: list[dict]
     lead_slots: dict
     answer: Optional[str]
