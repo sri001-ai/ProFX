@@ -274,6 +274,73 @@ def extract_embedded_product_price(html: str, url: str):
     return None
 
 
+# ---------------------------------------------------------------------------
+# Embedded accordion/FAQ body text. Confirmed real case: solution pages
+# (e.g. /solutions/boardroom-solutions) render collapsible sections —
+# "Clear Screens and Projectors", the FAQ list, etc. — where the DOM only
+# ever contains the <button>+<h3> title; the body text that appears on
+# click is NEVER in the rendered DOM at all (verified directly against the
+# raw HTML — there is no hidden sibling element to fall back to). It only
+# exists as {"title":..., "description":...} objects inside "accordion_items"
+# / "faq_items" arrays in the same escaped Next.js RSC JSON payload already
+# reverse-engineered elsewhere in this file for prices/document links.
+# FAQ descriptions are themselves an HTML fragment (<p>, <ul><li>, <a>...),
+# so they get parsed into the same block shape (paragraph/list_item) as the
+# rest of extract_content_blocks(), not flattened into one blob.
+EMBEDDED_ARRAY_RE = re.compile(r'\\?"(?:accordion_items|faq_items)\\?"\s*:\s*\[(.*?)\]', re.DOTALL)
+EMBEDDED_ITEM_RE = re.compile(
+    r'\\?"title\\?"\s*:\s*\\?"(.*?)\\?"'
+    r'\s*,\s*\\?"description\\?"\s*:\s*\\?"(.*?)\\?"'
+    r'\s*(?:,\s*\\?"[a-zA-Z_]+\\?"\s*:\s*(?:null|\\?"[^"\\]*\\?"|\d+))?\s*\}',
+    re.DOTALL,
+)
+
+
+def _unescape_embedded_json_string(s: str) -> str:
+    try:
+        unescaped = json.loads('"' + s + '"')
+    except Exception:
+        unescaped = s.replace('\\"', '"').replace("\\/", "/").replace("\\n", "\n")
+    # Residual literal backslash-n (2 chars, not an actual newline) shows up
+    # in some CMS rich-text fields even after proper JSON unescaping — a
+    # source data artifact, not something further unescaping fixes.
+    return unescaped.replace("\\n", " ")
+
+
+def _html_fragment_to_blocks(fragment: str) -> list:
+    soup = BeautifulSoup(fragment, "lxml")
+    if not soup.find(["p", "li", "ul", "ol"]):
+        text = _clean(soup.get_text(" "))
+        return [{"type": "paragraph", "text": text}] if text else []
+
+    blocks = []
+    for el in soup.find_all(["p", "li"]):
+        if el.name == "p" and el.find_parent("li"):
+            continue  # already captured by the enclosing <li>'s get_text()
+        text = _clean(el.get_text(" "))
+        if not text:
+            continue
+        blocks.append({"type": "list_item" if el.name == "li" else "paragraph", "text": text})
+    return blocks
+
+
+def extract_embedded_expandable_sections(html: str) -> dict:
+    """Returns {normalized_title: [content blocks]} for every accordion/FAQ
+    item found in the page's embedded JSON, keyed so callers can look a
+    heading's cleaned text up directly."""
+    sections = {}
+    for array_match in EMBEDDED_ARRAY_RE.finditer(html):
+        for item_match in EMBEDDED_ITEM_RE.finditer(array_match.group(1)):
+            title = _clean(_unescape_embedded_json_string(item_match.group(1)))
+            description = _unescape_embedded_json_string(item_match.group(2))
+            if not title or not description:
+                continue
+            blocks = _html_fragment_to_blocks(description)
+            if blocks:
+                sections[title.lower()] = blocks
+    return sections
+
+
 PDF_URL_ABS_RE = re.compile(r'https?://[^\s"\'<>\\]+\.pdf(?:\?[^\s"\'<>\\]*)?', re.IGNORECASE)
 PDF_URL_REL_RE = re.compile(r'(?<!http:)(?<!https:)(?<![\w./])(/[^\s"\'<>\\]+\.pdf(?:\?[^\s"\'<>\\]*)?)', re.IGNORECASE)
 
@@ -394,18 +461,26 @@ def extract_meta_description(soup) -> str:
 HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 
 
-def extract_content_blocks(soup) -> list:
+def extract_content_blocks(soup, html: str = "") -> list:
     """Walk the <main> region in document order and produce structured
     blocks (heading/paragraph/list_item) instead of one flattened text
     string. This preserves section hierarchy and reading order, which
     matters a lot for chunking quality downstream — a flat text blob loses
-    which paragraph belongs under which heading."""
+    which paragraph belongs under which heading.
+
+    If `html` is given, also merges in any accordion/FAQ body text found
+    only in the page's embedded JSON (see extract_embedded_expandable_sections)
+    — the DOM never contains that text at all on this site, only the
+    collapsed heading, so skipping this would silently lose every
+    accordion/FAQ answer on the page (confirmed real case: solution pages)."""
     soup = BeautifulSoup(str(soup), "lxml")  # work on a copy
     for tag in soup.select("script, style, nav, header, footer, .cookie-banner"):
         tag.decompose()
     main = soup.select_one("main") or soup.body
     if not main:
         return []
+
+    expandable_sections = extract_embedded_expandable_sections(html) if html else {}
 
     blocks = []
     seen_texts = set()  # collapse Next.js hydration duplicates (same text rendered twice)
@@ -419,6 +494,9 @@ def extract_content_blocks(soup) -> list:
 
         if el.name in HEADING_TAGS:
             blocks.append({"type": "heading", "level": int(el.name[1]), "text": text})
+            extra = expandable_sections.get(text.lower())
+            if extra:
+                blocks.extend(extra)
         elif el.name == "li":
             blocks.append({"type": "list_item", "text": text})
         else:
@@ -567,7 +645,7 @@ def extract_page(url: str, html: str, allowed_domains) -> dict:
     page_type = classify_page_type(url, soup, ld_blocks, html)
     breadcrumbs = extract_breadcrumbs(soup, ld_blocks)
     title = extract_page_title(soup)
-    content_blocks = extract_content_blocks(soup)
+    content_blocks = extract_content_blocks(soup, html)
     cards = extract_cards(soup, url, allowed_domains)
 
     pdf_links = extract_pdf_links(soup, html, url)
